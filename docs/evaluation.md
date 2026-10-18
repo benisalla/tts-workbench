@@ -46,5 +46,57 @@ does the rest.
 
 ## Results on the built-in datasets
 
-See the README's results table. They are short CPU runs on 8 kHz data meant to show the
-pipeline learns; the numbers are not comparable with LJSpeech benchmarks.
+Short CPU runs on 8 kHz data meant to show the pipeline learns; the numbers are not
+comparable with LJSpeech benchmarks. Every row is `tts-eval --checkpoint
+checkpoints/<run>/best.pt --data-dir data/<set> --n 15 [--vocoder hifigan --vocoder-checkpoint
+checkpoints/<set>_hifigan/best.pt]`; `results/summary.json` collects them and
+`python scripts/results_table.py synthetic|fsdd` prints the tables. Training commands:
+[training.md](training.md).
+
+### Synthetic toy language (285 train / 15 val sentences)
+
+| model | vocoder | params | steps | val mel L1 (first → last) | MCD (dB) | log-F0 RMSE (st) | voicing err. | duration err. | alignment diag. |
+|---|---|---|---|---|---|---|---|---|---|
+| `tacotron2` | Griffin-Lim | 0.9 M | 2880 | 2.68 → 0.12 | 18.8 | 6.1 | 0.14 | 0.04 | 0.17 |
+| `tacotron2` | HiFi-GAN | 0.9 M | 2880 | 2.68 → 0.12 | 18.6 | 16.4 | 0.14 | 0.03 | 0.17 |
+| `transformer-tts` | Griffin-Lim | 1.4 M | 720 | 0.88 → 0.19 | 13.0 | 4.6 | 0.06 | 0.04 | 0.91 |
+| `transformer-tts` | HiFi-GAN | 1.4 M | 720 | 0.88 → 0.19 | 15.4 | 19.9 | 0.13 | 0.03 | 0.91 |
+| `fastspeech2` | Griffin-Lim | 2.4 M | 720 | 0.44 → 0.27 | 12.3 | 3.0 | 0.04 | 0.05 | 0.97 |
+| `fastspeech2` | HiFi-GAN | 2.4 M | 720 | 0.44 → 0.27 | 14.6 | 19.5 | 0.13 | 0.03 | 0.97 |
+| `vits` | (end-to-end) | 3.1 M | 720 | 0.56 → 0.38 | 12.9 | 9.7 | 0.17 | 0.02 | 0.92 |
+| `hifigan` (vocoder alone) | | | 540 | 0.52 → 0.44 | | | | | |
+
+Reference points for MCD on this data (same metric, same 8 kHz mel settings):
+- Griffin-Lim copy-synthesis of the *true* mel vs. the recording: **10.5 dB** (the floor a mel model + Griffin-Lim can reach).
+
+### FSDD spoken digits (one speaker, 475 train / 25 val clips)
+
+| model | vocoder | params | steps | val mel L1 (first → last) | MCD (dB) | log-F0 RMSE (st) | voicing err. | duration err. | alignment diag. |
+|---|---|---|---|---|---|---|---|---|---|
+| `fastspeech2` | Griffin-Lim | 2.4 M | 4200 | 0.72 → 0.51 | 31.9 | 9.1 | 0.10 | 0.21 | 0.40 |
+| `fastspeech2` | HiFi-GAN | 2.4 M | 4200 | 0.72 → 0.51 | 33.5 | 13.3 | 0.15 | 0.19 | 0.40 |
+| `tacotron2` | Griffin-Lim | 0.9 M | 7200 | 1.11 → 0.34 | 29.0 | 7.7 | 0.13 | 0.10 | 0.29 |
+| `tacotron2` | HiFi-GAN | 0.9 M | 7200 | 1.11 → 0.34 | 34.0 | 13.4 | 0.14 | 0.09 | 0.29 |
+| `hifigan` (vocoder alone) | | | 1200 | 1.01 → 0.83 | | | | | |
+
+Reference points for MCD on this data (same metric, same 8 kHz mel settings):
+- Griffin-Lim copy-synthesis of the *true* mel vs. the recording: **18.8 dB** (the floor a mel model + Griffin-Lim can reach).
+- Another recording of the same text by the same speaker vs. the recording: **26.4 dB**, log-F0 RMSE 5.4 semitones (natural variation).
+
+How to read them (details and figures in the README):
+
+- Transformer-TTS, FastSpeech 2 and VITS reach 12–13 dB on the toy language, 2–3 dB above the
+  copy-synthesis floor, with near-diagonal alignments. Tacotron 2 has the lowest teacher-forced
+  error but no diagonal attention, so its free-running synthesis is 6 dB worse: `val_mel` alone
+  never tells you whether an attention model can synthesize.
+- On FSDD both models land just above the natural variation between two takes of the same
+  digit (26.4 dB, 5.4 semitones). That is the ceiling one can see with 15 one-word sentences.
+- The HiFi-GAN vocoders (540 / 1 200 steps) are not trained enough: they add about 2 dB MCD and
+  make the F0 error explode, which is what an unconverged GAN vocoder sounds like (buzz, no
+  pitch). Griffin-Lim is the reference vocoder at this scale.
+- Alignment diagonality is ~1 for FastSpeech 2 / VITS by construction when the aligner has
+  settled (toy language) and drops to 0.4 when the MAS path piles frames on one symbol (FSDD).
+
+The figures `images/synthetic_curves.png`, `images/fsdd_curves.png` (`scripts/plot_curves.py`)
+and `images/synthetic_alignments.png`, `images/fsdd_alignments.png` (`scripts/alignment_grid.py`)
+are built from the `curves.csv` and `alignment_<step>.png` files that `tts-train` writes.

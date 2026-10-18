@@ -8,7 +8,7 @@ notebook.**
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.x-ee4c2c.svg)](https://pytorch.org)
-[![Tests](https://img.shields.io/badge/tests-pytest-green.svg)](docs/testing.md)
+[![Tests](https://img.shields.io/badge/tests-34%20passing-brightgreen.svg)](docs/testing.md)
 
 The models are deliberately small (about one million parameters each by default) so that a
 run on a laptop CPU or a free GPU shows what the method does, and so that every line can be
@@ -79,7 +79,96 @@ scores them (MCD, F0, WER with Whisper, predicted MOS with UTMOS). Its checkpoin
 
 ## Results
 
-RESULTS_PLACEHOLDER
+These are short CPU runs (two threads, minutes each) on 8 kHz data. Their purpose is to show
+that every model learns and that the metrics and plots mean something, not to compete with
+LJSpeech numbers. `python scripts/results_table.py synthetic|fsdd` prints the tables from
+`results/summary.json`; the commands are in [docs/training.md](docs/training.md).
+
+Columns: `val mel L1` is the teacher-forced validation error, first and last evaluation
+(the one term every model shares). The rest are measured on free-running synthesis of 15
+validation sentences against the recordings, along a DTW path
+([docs/evaluation.md](docs/evaluation.md)): MCD in dB, log-F0 RMSE in semitones, the share
+of frames with a voicing mismatch, the relative length error, and the share of attention
+mass near the diagonal (the MAS path for FastSpeech 2 / VITS).
+
+### Synthetic toy language (300 sentences, 285 train / 15 val, 8 kHz)
+
+| model | vocoder | params | steps | val mel L1 (first → last) | MCD (dB) | log-F0 RMSE (st) | voicing err. | duration err. | alignment diag. |
+|---|---|---|---|---|---|---|---|---|---|
+| `tacotron2` | Griffin-Lim | 0.9 M | 2880 | 2.68 → 0.12 | 18.8 | 6.1 | 0.14 | 0.04 | 0.17 |
+| `tacotron2` | HiFi-GAN | 0.9 M | 2880 | 2.68 → 0.12 | 18.6 | 16.4 | 0.14 | 0.03 | 0.17 |
+| `transformer-tts` | Griffin-Lim | 1.4 M | 720 | 0.88 → 0.19 | 13.0 | 4.6 | 0.06 | 0.04 | 0.91 |
+| `transformer-tts` | HiFi-GAN | 1.4 M | 720 | 0.88 → 0.19 | 15.4 | 19.9 | 0.13 | 0.03 | 0.91 |
+| `fastspeech2` | Griffin-Lim | 2.4 M | 720 | 0.44 → 0.27 | 12.3 | 3.0 | 0.04 | 0.05 | 0.97 |
+| `fastspeech2` | HiFi-GAN | 2.4 M | 720 | 0.44 → 0.27 | 14.6 | 19.5 | 0.13 | 0.03 | 0.97 |
+| `vits` | (end-to-end) | 3.1 M | 720 | 0.56 → 0.38 | 12.9 | 9.7 | 0.17 | 0.02 | 0.92 |
+| `hifigan` (vocoder alone) | | | 540 | 0.52 → 0.44 | | | | | |
+
+Reference points for MCD on this data (same metric, same 8 kHz mel settings):
+- Griffin-Lim copy-synthesis of the *true* mel vs. the recording: **10.5 dB** (the floor a mel model + Griffin-Lim can reach).
+
+- **Transformer-TTS, FastSpeech 2 and VITS all learn the language**: 12–13 dB MCD with
+  Griffin-Lim against a 10.5 dB floor (copy-synthesis of the true mel), near-diagonal
+  alignments (0.91–0.97) and 2–5 % length error. FastSpeech 2 has the best MCD and F0.
+- **Tacotron 2 shows the classic failure of attention TTS**: its teacher-forced error is the
+  lowest of all (0.12) because the decoder learns to copy the previous frame, but the
+  attention never became diagonal (0.17), so free-running synthesis drifts (18.8 dB). The
+  guided-attention loss and 160 epochs were not enough on 285 sentences; the alignment grid
+  below shows it still attending to one symbol.
+- **The HiFi-GAN vocoder is under-trained** (540 steps): with it, MCD rises by about 2 dB and
+  the F0 error jumps to 16–20 semitones, which means the periodicity is not there yet. On this
+  scale Griffin-Lim is the honest vocoder; HiFi-GAN needs hours on a GPU
+  ([docs/training.md](docs/training.md)).
+
+![synthetic curves](docs/images/synthetic_curves.png)
+
+![synthetic alignments](docs/images/synthetic_alignments.png)
+
+Listen (validation sentences, Griffin-Lim): recording
+[toy0003](docs/audio/recording_toy0003.wav) /
+[toy0034](docs/audio/recording_toy0034.wav), FastSpeech 2
+[toy0003](docs/audio/synthetic_fastspeech2_griffinlim_toy0003_syn.wav) /
+[toy0034](docs/audio/synthetic_fastspeech2_griffinlim_toy0034_syn.wav), VITS
+[toy0003](docs/audio/synthetic_vits_griffinlim_toy0003_syn.wav) /
+[toy0034](docs/audio/synthetic_vits_griffinlim_toy0034_syn.wav).
+
+### FSDD: real spoken digits (one speaker, 500 clips, 475 train / 25 val, 8 kHz)
+
+| model | vocoder | params | steps | val mel L1 (first → last) | MCD (dB) | log-F0 RMSE (st) | voicing err. | duration err. | alignment diag. |
+|---|---|---|---|---|---|---|---|---|---|
+| `fastspeech2` | Griffin-Lim | 2.4 M | 4200 | 0.72 → 0.51 | 31.9 | 9.1 | 0.10 | 0.21 | 0.40 |
+| `fastspeech2` | HiFi-GAN | 2.4 M | 4200 | 0.72 → 0.51 | 33.5 | 13.3 | 0.15 | 0.19 | 0.40 |
+| `tacotron2` | Griffin-Lim | 0.9 M | 7200 | 1.11 → 0.34 | 29.0 | 7.7 | 0.13 | 0.10 | 0.29 |
+| `tacotron2` | HiFi-GAN | 0.9 M | 7200 | 1.11 → 0.34 | 34.0 | 13.4 | 0.14 | 0.09 | 0.29 |
+| `hifigan` (vocoder alone) | | | 1200 | 1.01 → 0.83 | | | | | |
+
+Reference points for MCD on this data (same metric, same 8 kHz mel settings):
+- Griffin-Lim copy-synthesis of the *true* mel vs. the recording: **18.8 dB** (the floor a mel model + Griffin-Lim can reach).
+- Another recording of the same text by the same speaker vs. the recording: **26.4 dB**, log-F0 RMSE 5.4 semitones (natural variation).
+
+Tacotron 2: 240 epochs, 20 min. FastSpeech 2: 240 epochs, 26 min, best checkpoint at step
+4 200. The two reference points say what the numbers mean: a model + Griffin-Lim cannot go
+below 18.8 dB, and two recordings of the *same digit by the same speaker* already differ by
+26.4 dB and 5.4 semitones. Both models sit a little above that natural variation (29–34 dB,
+8–9 semitones): they produce the right digit at roughly the right length, with the melody of
+an average take. 475 one-word clips are too few for a sharp alignment (0.29–0.40 diagonal):
+the attention of Tacotron 2 is still blurry after 7 200 steps and the MAS path of FastSpeech 2
+spends most frames on one or two symbols. The vocoder story is the same as above.
+
+![fsdd curves](docs/images/fsdd_curves.png)
+
+![fsdd alignments](docs/images/fsdd_alignments.png)
+
+Listen: recording [0 (zero)](docs/audio/recording_0_jackson_32.wav) /
+[1 (one)](docs/audio/recording_1_jackson_14.wav); Tacotron 2 + Griffin-Lim
+[zero](docs/audio/fsdd_tacotron2_griffinlim_0_jackson_32_syn.wav) /
+[one](docs/audio/fsdd_tacotron2_griffinlim_1_jackson_14_syn.wav), + HiFi-GAN
+[zero](docs/audio/fsdd_tacotron2_hifigan_0_jackson_32_syn.wav) /
+[one](docs/audio/fsdd_tacotron2_hifigan_1_jackson_14_syn.wav); FastSpeech 2 + Griffin-Lim
+[zero](docs/audio/fsdd_fastspeech2_griffinlim_0_jackson_32_syn.wav) /
+[one](docs/audio/fsdd_fastspeech2_griffinlim_1_jackson_14_syn.wav), + HiFi-GAN
+[zero](docs/audio/fsdd_fastspeech2_hifigan_0_jackson_32_syn.wav) /
+[one](docs/audio/fsdd_fastspeech2_hifigan_1_jackson_14_syn.wav).
 
 ## Documentation
 

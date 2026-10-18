@@ -1,0 +1,14 @@
+{
+  "synthetic": {
+    "copy_synthesis_mcd": 10.487370672092943,
+    "same_text_other_recording_mcd": null,
+    "same_text_other_recording_f0_rmse": null,
+    "n": 15
+  },
+  "fsdd": {
+    "copy_synthesis_mcd": 18.847877931640692,
+    "same_text_other_recording_mcd": 26.437329507086552,
+    "same_text_other_recording_f0_rmse": 5.395208942890167,
+    "n": 15
+  }
+}

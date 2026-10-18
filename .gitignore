@@ -11,3 +11,4 @@ synthesized/
 *.onnx
 *.wav
 !docs/audio/*.wav
+results/*/

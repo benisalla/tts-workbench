@@ -50,12 +50,24 @@ Tacotron 2 / FastSpeech 2, plus a HiFi-GAN run of similar length.
 
 ## Reproducing the README numbers
 
+Two CPU threads (`OMP_NUM_THREADS=2`), default model sizes, `--eval-every 10`; `--resume True`
+continues a run, `--time-budget-hours` stops it in time.
+
 ```bash
 tts-data synthetic --out data/synthetic --n 300
-tts-train --model tacotron2       --data-dir data/synthetic --output-dir checkpoints/synthetic_tacotron2 --epochs 40 --eval-every 5
-tts-train --model transformer_tts --data-dir data/synthetic --output-dir checkpoints/synthetic_transformer_tts --epochs 40 --eval-every 5
-tts-train --model fastspeech2     --data-dir data/synthetic --output-dir checkpoints/synthetic_fastspeech2 --epochs 40 --eval-every 5
-tts-train --model hifigan         --data-dir data/synthetic --output-dir checkpoints/synthetic_hifigan --epochs 30 --eval-every 5
-tts-train --model vits            --data-dir data/synthetic --output-dir checkpoints/synthetic_vits --epochs 40 --eval-every 5
+tts-train --model tacotron2       --data-dir data/synthetic --output-dir checkpoints/synthetic_tacotron2 --epochs 160 --warmup-steps 100
+tts-train --model transformer_tts --data-dir data/synthetic --output-dir checkpoints/synthetic_transformer_tts --epochs 40
+tts-train --model fastspeech2     --data-dir data/synthetic --output-dir checkpoints/synthetic_fastspeech2 --epochs 40
+tts-train --model vits            --data-dir data/synthetic --output-dir checkpoints/synthetic_vits --epochs 40
+tts-train --model hifigan         --data-dir data/synthetic --output-dir checkpoints/synthetic_hifigan --epochs 30
+
+tts-data fsdd --out data/fsdd                                   # 500 clips of one speaker
+tts-train --model tacotron2   --data-dir data/fsdd --output-dir checkpoints/fsdd_tacotron2   --epochs 240 --warmup-steps 200 --time-budget-hours 0.5
+tts-train --model fastspeech2 --data-dir data/fsdd --output-dir checkpoints/fsdd_fastspeech2 --epochs 240 --warmup-steps 200 --bin-warmup-steps 400 --time-budget-hours 0.5
+tts-train --model hifigan     --data-dir data/fsdd --output-dir checkpoints/fsdd_hifigan     --epochs 40
+
 tts-eval --checkpoint checkpoints/synthetic_<model>/best.pt --data-dir data/synthetic --n 15
+python scripts/results_table.py synthetic        # tables from results/summary.json
+python scripts/plot_curves.py docs/images/synthetic_curves.png checkpoints/synthetic_*
+python scripts/alignment_grid.py docs/images/synthetic_alignments.png checkpoints/synthetic_*
 ```
