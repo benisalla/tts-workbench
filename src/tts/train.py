@@ -178,6 +178,9 @@ class Trainer:
 
     def mel_step(self, batch: dict) -> dict:
         self.opt.zero_grad(set_to_none=True)
+        if hasattr(self.model, "bin_weight"):
+            w = self.cfg.train.bin_warmup_steps
+            self.model.bin_weight = min(1.0, max(0.0, (self.step - w) / max(w, 1)))
         with torch.autocast(self.device.type, enabled=self.scaler.is_enabled()):
             out = self.model(batch)
         self.scaler.scale(out["loss"]).backward()
@@ -215,8 +218,9 @@ class Trainer:
                 out = self.model(batch)
                 vals = {k: v.item() for k, v in out.items() if torch.is_tensor(v) and v.dim() == 0}
                 vals["mel"] = vals.get("mel_after", vals["loss"])
-                if attn is None and "attention" in out:
-                    attn = out["attention"][0, :, : int(batch["text_lens"][0])]
+                if attn is None and "attention" in out:  # first item, cropped to its own lengths
+                    steps = out["attention"].size(1) * int(batch["mel_lens"][0]) // batch["mel"].size(2)
+                    attn = out["attention"][0, :steps, : int(batch["text_lens"][0])]
             for k, v in vals.items():
                 totals[k] = totals.get(k, 0.0) + v * batch["mel"].size(0)
             n += batch["mel"].size(0)

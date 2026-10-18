@@ -51,3 +51,17 @@ def test_teacher_durations_from_attention():
     attn = torch.zeros(10, 3)
     attn[:4, 0], attn[4:7, 1], attn[7:, 2] = 1, 1, 1
     assert durations_from_attention(attn, 3, 10).tolist() == [4, 3, 3]
+
+
+def test_aligner_phases_warmup_then_hard_em():
+    torch.manual_seed(0)
+    aligner = Aligner(8, 64, dim=16)
+    text, mel = torch.randn(2, 4, 8), torch.randn(2, 64, 12)
+    mask = torch.ones(2, 4, dtype=torch.bool)
+    tl, ml = torch.tensor([4, 4]), torch.tensor([12, 8])
+    log_probs = aligner(text, mel, mask)
+    hard, losses = aligner.align(log_probs, tl, ml, mask, bin_weight=0.0)
+    assert set(losses) == {"bin"} and (hard.sum((1, 2)) == ml).all()
+    assert hard[0].sum(1).tolist() == [3, 3, 3, 3]  # warm-up labels: the diagonal prior = uniform durations
+    hard, losses = aligner.align(log_probs, tl, ml, mask, bin_weight=1.0)
+    assert set(losses) == {"bin", "forward_sum"} and (hard.sum((1, 2)) == ml).all()

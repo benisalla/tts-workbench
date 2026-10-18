@@ -59,6 +59,26 @@ class HiFiGANGenerator(nn.Module):
             ch //= 2
             self.mrfs.append(nn.ModuleList(ResBlock(ch, k, m.resblock_dilations) for k in m.resblock_kernels))
         self.post = weight_norm(nn.Conv1d(ch, 1, 7, padding=3))
+        self.smooth_init()
+
+    def smooth_init(self) -> None:
+        """Start every transposed convolution as a linear interpolator (channel i -> channel i).
+
+        A randomly initialised ConvTranspose1d repeats its kernel every `stride` samples and
+        produces a buzz at the frame rate (sample_rate / hop_length, 62.5 Hz at 8 kHz / 128);
+        a triangular kernel interpolates smoothly between frames instead, so early training
+        sounds like a low-pass version of the target rather than a buzz. The other channels keep
+        a small random kernel (weight-norm needs a non-zero direction per channel)."""
+        for up in self.ups:
+            v, g = up.parametrizations.weight.original1, up.parametrizations.weight.original0
+            cin, cout, k = v.shape
+            r = up.stride[0]
+            tri = torch.clamp(1 - torch.abs(torch.arange(k, dtype=v.dtype) - (k - 1) / 2) / r, min=0)
+            with torch.no_grad():
+                v.mul_(0.05)
+                for i in range(min(cin, cout)):
+                    v[i, i] = tri
+                g.copy_(v.flatten(1).norm(dim=1).view(-1, 1, 1))  # weight == v
 
     def forward(self, x):
         x = self.pre(x)

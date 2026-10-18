@@ -27,7 +27,7 @@ and `alignment_<step>.png`.
 | model | signs of learning | typical problem |
 |---|---|---|
 | tacotron2 / transformer_tts | `mel_after` falling, `stop` -> 0, alignment plot turning into a diagonal within a few hundred steps | no diagonal: raise `--guided-attention`, lower the learning rate, trim silences |
-| fastspeech2 | `forward_sum` falling, `bin` -> ~0.1, `duration` < 0.1, `mel_after` falling | `pitch` stuck: data with little voicing (toy data is fine, whispered speech is not) |
+| fastspeech2 | `bin` falling during the warm-up, then `forward_sum` falling and `bin` -> ~0.5, `duration` < 0.1, `mel_after` falling; the validation alignment plot is a staircase | durations collapse to one symbol: raise `--bin-warmup-steps` (the aligner needs the prior longer) |
 | hifigan | `mel` falling below ~ 0.5 while `gen` and `disc` hover around 1-3 | `disc` -> 0 and `gen` exploding: the discriminator won; lower `--lr` |
 | vits | `kl` 0.5-2, `duration` < 0.2, `mel` falling | same as hifigan |
 

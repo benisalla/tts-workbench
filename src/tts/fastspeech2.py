@@ -12,8 +12,8 @@ text -> Embedding + positional encoding -> L x FFTBlock                    (enco
 ```
 
 There is no attention between text and frames, so the model *must* be told the durations.
-By default a small **aligner** (see `align.py`) is trained jointly with the forward-sum
-loss and gives hard durations through monotonic alignment search; `--duration-source
+By default a small **aligner** (see `align.py`) is trained jointly (diagonal-prior warm-up,
+then hard-EM with monotonic alignment search and the forward-sum loss) and gives hard durations; `--duration-source
 teacher` uses durations cached from a Tacotron 2 attention instead. Inference is one
 forward pass (hundreds of times faster than an AR decoder), fully controllable (scale the
 durations to speak slower, shift the pitch), and never loops or repeats words.
@@ -25,7 +25,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from tts.align import Aligner, durations_from_alignment, forward_sum_loss, mas_batch
+from tts.align import Aligner, durations_from_alignment
 from tts.config import Config
 from tts.layers import (
     FFTBlock,
@@ -73,6 +73,7 @@ class FastSpeech2(nn.Module):
         self.mel_out = nn.Linear(H, a.n_mels)
         self.postnet = PostNet(a.n_mels, m.postnet_channels, m.postnet_layers, dropout=m.dropout)
         self.aligner = Aligner(H, a.n_mels) if cfg.train.duration_source == "aligner" else None
+        self.bin_weight = 0.0  # set by the trainer: 0 during the aligner warm-up, then ramped to 1
 
     def encode(self, text, text_lens, speaker):
         mask = sequence_mask(text_lens, text.size(1))
@@ -105,10 +106,8 @@ class FastSpeech2(nn.Module):
         out = {}
         if self.aligner is not None:
             log_probs = self.aligner(self.embed(text), mel, mask)  # (B, N, T)
-            out["forward_sum"] = forward_sum_loss(log_probs, text_lens, mel_lens)
-            hard = mas_batch(log_probs, text_lens, mel_lens)
-            # binarisation loss: pull the soft alignment towards the hard path (after a warm-up it is ~0)
-            out["bin"] = -(hard * log_probs).sum() / hard.sum()
+            hard, aligner_losses = self.aligner.align(log_probs, text_lens, mel_lens, mask, self.bin_weight)
+            out.update(aligner_losses)
             durations = durations_from_alignment(hard)
         else:
             durations = batch["durations"]

@@ -72,22 +72,61 @@ def forward_sum_loss(log_probs: torch.Tensor, text_lens: torch.Tensor, mel_lens:
     return F.ctc_loss(lp, targets, mel_lens, text_lens, blank=0, reduction="mean", zero_infinity=True)
 
 
-class Aligner(nn.Module):
-    """Text (B, N, D) and mel (B, n_mels, T) -> soft alignment (B, N, T) and log-probs."""
+def diagonal_log_prior(text_lens: torch.Tensor, mel_lens: torch.Tensor, N: int, T: int, sigma: float = 0.15
+                       ) -> torch.Tensor:
+    """log of a Gaussian band around the diagonal, (B, N, T): -((n+.5)/N_b - (t+.5)/T_b)^2 / (2 sigma^2).
 
-    def __init__(self, text_dim: int, n_mels: int, dim: int = 64):
+    Added to the aligner's logits early in training (RAD-TTS uses a beta-binomial prior for the
+    same purpose): it tells the aligner roughly where frames belong before it has learnt anything,
+    so the forward-sum loss has a gradient to follow instead of a flat alignment."""
+    n = (torch.arange(N, device=text_lens.device)[None, :, None] + 0.5) / text_lens[:, None, None]
+    t = (torch.arange(T, device=text_lens.device)[None, None, :] + 0.5) / mel_lens[:, None, None]
+    return -((n - t) ** 2) / (2 * sigma**2)
+
+
+class Aligner(nn.Module):
+    """Text (B, N, D) and mel (B, n_mels, T) -> log-probabilities (B, N, T), log-softmax over text positions.
+
+    Logits are the negative squared distance between projected text and mel features, scaled by a
+    small `temperature` (RAD-TTS uses 0.0005): large distances must not make the soft alignment
+    one-hot before the features mean anything.
+
+    How it is trained (see `FastSpeech2.forward`): the forward-sum loss alone has a degenerate
+    optimum where one symbol absorbs every frame, and at our scale gradient descent finds it.
+    So for `bin_warmup_steps` the aligner is first taught the *diagonal prior* (MAS on the prior
+    alone, i.e. roughly uniform durations) as hard labels; then MAS on its own log-probabilities
+    gives the labels (hard EM, the Glow-TTS recipe) and the forward-sum loss is ramped in.
+    """
+
+    def __init__(self, text_dim: int, n_mels: int, dim: int = 64, temperature: float = 0.005):
         super().__init__()
         self.text = nn.Sequential(ConvNorm(text_dim, dim, 3, act=nn.ReLU(), norm=False), nn.Conv1d(dim, dim, 1))
         self.mel = nn.Sequential(ConvNorm(n_mels, dim, 3, act=nn.ReLU(), norm=False),
                                  ConvNorm(dim, dim, 3, act=nn.ReLU(), norm=False), nn.Conv1d(dim, dim, 1))
+        self.temperature = temperature
 
-    def forward(self, text: torch.Tensor, mel: torch.Tensor, text_mask: torch.Tensor):
+    def forward(self, text: torch.Tensor, mel: torch.Tensor, text_mask: torch.Tensor) -> torch.Tensor:
         h_text = self.text(text.transpose(1, 2))  # (B, D, N)
         h_mel = self.mel(mel)  # (B, D, T)
         dist = ((h_mel[:, :, None, :] - h_text[:, :, :, None]) ** 2).sum(1)  # (B, N, T)
-        logits = -dist / h_text.size(1) ** 0.5
-        logits = logits.masked_fill(~text_mask[:, :, None], -1e4)
+        logits = (-dist * self.temperature).masked_fill(~text_mask[:, :, None], -1e4)
         return logits.log_softmax(dim=1)  # over text positions
+
+    def align(self, log_probs: torch.Tensor, text_lens: torch.Tensor, mel_lens: torch.Tensor, text_mask: torch.Tensor,
+              bin_weight: float) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        """Hard alignment (B, N, T) and the aligner losses for the current training phase.
+
+        bin_weight 0 = warm-up (labels from the diagonal prior), ramping to 1 = labels from MAS on
+        the aligner's own log-probabilities (with a fading prior) plus the forward-sum loss."""
+        _, N, T = log_probs.shape
+        with torch.no_grad():
+            prior = diagonal_log_prior(text_lens, mel_lens, N, T).masked_fill(~text_mask[:, :, None], -1e4)
+            guide = prior if bin_weight <= 0 else log_probs + (1.0 - bin_weight) * prior
+            hard = mas_batch(guide, text_lens, mel_lens)
+        losses = {"bin": -(hard * log_probs).sum() / hard.sum()}
+        if bin_weight > 0:
+            losses["forward_sum"] = bin_weight * forward_sum_loss(log_probs, text_lens, mel_lens)
+        return hard, losses
 
 
 def durations_from_alignment(hard: torch.Tensor) -> torch.Tensor:

@@ -94,6 +94,7 @@ class TrainConfig:
     time_budget_hours: float = 0.0  # 0 = no limit
     resume: bool = False
     duration_source: str = "aligner"  # fastspeech2: "aligner" | "teacher" (durations cached by tts-eval --export-durations)
+    bin_warmup_steps: int = 300  # fastspeech2: steps before the aligner's binarisation loss ramps in
     guided_attention: float = 1.0  # weight of the diagonal guided-attention loss (AR models), 0 = off
     max_frames: int = 600  # clips longer than this (in mel frames) are skipped
     device: str = "auto"

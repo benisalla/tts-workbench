@@ -174,6 +174,10 @@ folder turns it on. Zero-shot speaker cloning (an external speaker encoder) is o
   audio: a perceptual reconstruction loss), and 45 x mel L1.
   Train it on the same data as the acoustic model (`tts-train --model hifigan`) and chain it
   with `tts-synthesize --vocoder hifigan --vocoder-checkpoint ...`.
+  One detail worth knowing: a randomly initialised transposed convolution repeats its kernel
+  every `stride` samples and produces a buzz at the frame rate (62.5 Hz at 8 kHz / 128), which
+  a short run never fully unlearns. `HiFiGANGenerator.smooth_init` starts every upsampler as a
+  linear interpolator instead, so the first steps sound like a low-pass version of the target.
 
 ## Sizes
 

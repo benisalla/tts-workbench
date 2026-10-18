@@ -42,15 +42,27 @@ logits[n, t] = -||h_mel[t] - h_text[n]||^2 / sqrt(D)
 log_probs    = log_softmax over n                   (soft alignment, every frame picks a symbol)
 ```
 
-It is trained with the **forward-sum loss**: the log of the total probability of *all*
-monotonic paths, computed with the CTC forward algorithm (`F.ctc_loss` with the symbols
-1..N as targets and a blank that can never be emitted). Then **MAS** on `log_probs` gives
-the hard alignment, and a small **binarisation loss** `-sum(hard * log_probs)` pulls the
-soft alignment towards it. The durations are `hard.sum(dim=2)`.
+Training it is the interesting part. The natural objective is the **forward-sum loss**: the
+log of the total probability of *all* monotonic paths, computed with the CTC forward algorithm
+(`F.ctc_loss` with the symbols 1..N as targets and a blank that can never be emitted). But that
+loss has a degenerate optimum, "one symbol absorbs every frame, the others get one frame each",
+and at our scale gradient descent finds it every time (the aligner collapses its mel features
+onto one symbol's features, which costs nothing). The recipe in `Aligner.align`, found by
+testing the variants on the toy data, is a curriculum:
 
-This is why `tts-train --model fastspeech2` works on any dataset in the LJSpeech layout with no
-alignment tool: the aligner trains together with the model (its loss shows as `forward_sum`
-and `bin` in the logs) and the alignment plot of the validation set is the MAS path.
+1. **Warm-up** (`--bin-warmup-steps`, default 300 steps): the labels are the MAS path of a
+   *diagonal prior* alone (`diagonal_log_prior`, a Gaussian band around the diagonal, so
+   roughly uniform durations), and the aligner is trained with the cross-entropy against them
+   (`bin` in the logs). RAD-TTS does the same with a beta-binomial prior.
+2. **Hard EM**: the labels become the MAS path of the aligner's own log-probabilities plus the
+   fading prior (the Glow-TTS recipe), and the **forward-sum** loss is ramped in over the next
+   `bin_warmup_steps` steps.
+
+On the toy language this gives durations within one frame of the truth after a few hundred
+steps, where forward-sum alone (with or without the prior added to the logits) stays degenerate.
+The durations are `hard.sum(dim=2)`. This is why `tts-train --model fastspeech2` works on any
+dataset in the LJSpeech layout with no alignment tool: the aligner trains together with the
+model and the alignment plot of the validation set is its MAS path.
 
 ## 4. Teacher durations (`align.durations_from_attention`, `tts-eval --export-durations`)
 
