@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tts-workbench"
+version = "0.1.0"
+description = "Text-to-speech workbench in PyTorch: Tacotron 2, Transformer-TTS, FastSpeech 2, VITS and a HiFi-GAN vocoder with a built-in aligner, MCD/F0/WER/MOS evaluation and a Kaggle/Colab notebook."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+keywords = [
+  "text-to-speech", "tts", "speech-synthesis", "tacotron2", "fastspeech2", "vits", "hifigan",
+  "vocoder", "neural-vocoder", "mel-spectrogram", "monotonic-alignment", "pytorch", "deep-learning",
+  "griffin-lim", "transformer-tts", "mcd", "utmos", "educational",
+]
+dependencies = [
+  "numpy>=1.24",
+  "scipy>=1.10",
+  "soundfile>=0.12",
+  "torch>=2.4",
+]
+
+[project.scripts]
+tts-train = "tts.train:main"
+tts-synthesize = "tts.synthesize:main"
+tts-eval = "tts.metrics:main"
+tts-data = "tts.datasets:main"
+
+[project.optional-dependencies]
+phonemes = ["g2p-en>=2.1"]
+metrics = ["transformers>=4.40"]
+plots = ["matplotlib>=3.8"]
+dev = ["pytest>=8", "ruff>=0.9", "nbformat>=5.10", "matplotlib>=3.8"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tts"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+extend-exclude = ["notebooks/*.ipynb"]  # generated from src/ by notebooks/build_notebook.py

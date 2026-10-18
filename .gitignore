@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.pyc
+*.egg-info/
+checkpoints/
+runs/
+data/
+synthesized/
+*.onnx
+*.wav
+!docs/audio/*.wav
