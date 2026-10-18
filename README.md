@@ -68,6 +68,18 @@ vocoder is trained. Every field of `src/tts/config.py` is a flag (`--hidden 256 
 Real speech to try on this scale: `tts-data fsdd` (3,000 spoken digits, 8 kHz, 20 MB) and
 `tts-data yesno` (60 clips, 4.5 MB). For LJSpeech use the notebook.
 
+## Examples
+
+[`examples/`](examples/README.md) holds six short scripts that use the package from Python,
+in order: train a small FastSpeech 2 on the toy language in two minutes, synthesize a
+sentence (normal and slow) and draw its mel and alignment, score it against the recordings
+next to the copy-synthesis floor, look at the mel / F0 / Griffin-Lim front end, run every
+model on a random batch, and watch monotonic alignment search on a toy matrix.
+
+```bash
+python examples/01_train_on_toy_data.py && python examples/02_synthesize.py
+```
+
 ## Kaggle / Colab notebook
 
 [`notebooks/train_colab_kaggle.ipynb`](notebooks/train_colab_kaggle.ipynb) is generated from
@@ -181,6 +193,7 @@ Listen: recording [0 (zero)](docs/audio/recording_0_jackson_32.wav) /
 | [docs/inference.md](docs/inference.md) | `tts-synthesize`, the Python API, what inference does per model |
 | [docs/evaluation.md](docs/evaluation.md) | MCD, F0, WER, UTMOS, how to run a human MOS test |
 | [docs/testing.md](docs/testing.md) | the test suite |
+| [examples/](examples/README.md) | the package from Python, step by step |
 
 ## Layout
 
@@ -189,6 +202,7 @@ src/tts/        config, text, audio, layers, align, tacotron2, transformer_tts, 
                 vocoders, losses, vits, data, datasets, models, train, synthesize, metrics
 tests/          pytest suite (micro models, toy data, ~ 25 s)
 docs/           the pages above, alignment plots and sample audio
+examples/       six scripts: train, synthesize, evaluate, front end, model zoo, MAS
 notebooks/      build_notebook.py -> train_colab_kaggle.ipynb
 ```
 

@@ -12,3 +12,4 @@ synthesized/
 *.wav
 !docs/audio/*.wav
 results/*/
+examples/output/
